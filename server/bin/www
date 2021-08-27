@@ -1,0 +1,147 @@
+#!/usr/bin/env node
+
+/**
+ * Module dependencies.
+ */
+
+var app = require('../app');
+const socketIO = require("socket.io"); 
+var debug = require('debug')('server:server');
+var http = require('http');
+
+
+
+/**
+ * Get port from environment and store in Express.
+ */
+
+var port = normalizePort('3001');
+app.set('port', port);
+
+/**
+ * Create HTTP server.
+ */
+
+var server = http.createServer(app);
+
+const io = socketIO(server, {
+  cors: true,
+  origins:["localhost:3000"]
+});
+
+const users = {};
+
+io.on('connection', (socket) => {
+  let connId = socket.id
+  console.log(connId + ' connected');
+
+  users[connId] = {
+    socket,
+    meta: { id: connId, url: "" }
+  }
+
+  socket.on('cursorPosition', (position) => {
+    console.log(`${connId} : message : ${position}`)
+    Object.keys(users).forEach((userId) => {
+      if (userId !== connId) {
+        users[userId].socket.emit('cursorPosition', position);
+      }
+    });
+  })
+
+  socket.on('image', (url) => {
+    console.log(`${connId} : image : ${url}`)
+    users[connId].meta.url = url;
+    let _users = Object.keys(users).filter(user => user !== connId).map(user => users[user].meta)
+    console.log(_users)
+
+    Object.keys(users).forEach((userId) => {
+      if (users[userId].id !== connId) {
+        // users[userId].socket.emit('test', users)
+        users[userId].socket.emit('users', _users);
+      }
+    });
+  })
+
+  socket.on('disconnect', () => {
+    console.log(connId + ' disconnected');
+    delete users[connId];
+    Object.keys(users).forEach((userId) => {
+      if (users[userId].id !== connId) {
+        users[userId].socket.emit('users', Object.keys(users).filter(user => user !== connId).map(user => users[user].meta));
+      }
+    });
+  });
+});
+
+
+
+
+
+/**
+ * Listen on provided port, on all network interfaces.
+ */
+
+server.listen(port);
+server.on('error', onError);
+server.on('listening', onListening);
+
+/**
+ * Normalize a port into a number, string, or false.
+ */
+
+function normalizePort(val) {
+  var port = parseInt(val, 10);
+
+  if (isNaN(port)) {
+    // named pipe
+    return val;
+  }
+
+  if (port >= 0) {
+    // port number
+    return port;
+  }
+
+  return false;
+}
+
+/**
+ * Event listener for HTTP server "error" event.
+ */
+
+function onError(error) {
+  if (error.syscall !== 'listen') {
+    throw error;
+  }
+
+  var bind = typeof port === 'string'
+    ? 'Pipe ' + port
+    : 'Port ' + port;
+
+  // handle specific listen errors with friendly messages
+  switch (error.code) {
+    case 'EACCES':
+      console.error(bind + ' requires elevated privileges');
+      process.exit(1);
+      break;
+    case 'EADDRINUSE':
+      console.error(bind + ' is already in use');
+      process.exit(1);
+      break;
+    default:
+      throw error;
+  }
+}
+
+/**
+ * Event listener for HTTP server "listening" event.
+ */
+
+function onListening() {
+  var addr = server.address();
+  var bind = typeof addr === 'string'
+    ? 'pipe ' + addr
+    : 'port ' + addr.port;
+  debug('Listening on ' + bind);
+}
