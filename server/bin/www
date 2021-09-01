@@ -10,7 +10,6 @@ var debug = require('debug')('server:server');
 var http = require('http');
 
 
-
 /**
  * Get port from environment and store in Express.
  */
@@ -31,6 +30,8 @@ const io = socketIO(server, {
 
 const users = {};
 
+
+
 io.on('connection', (socket) => {
   let connId = socket.id
   console.log(connId + ' connected');
@@ -40,37 +41,36 @@ io.on('connection', (socket) => {
     meta: { id: connId, url: "" }
   }
 
+  const broadcastUsers = () => {
+    Object.keys(users).forEach((userId) => {
+      let _users = Object.keys(users).filter(user => user !== userId).map(user => users[user].meta)
+      if (userId !== connId) {
+        users[userId] && users[userId].socket && users[userId].socket.emit('users', _users);
+      }
+    });
+  }
+
+  socket.emit('_connect', socket.id);
+
   socket.on('cursorPosition', (position) => {
     console.log(`${connId} : message : ${position}`)
     Object.keys(users).forEach((userId) => {
       if (userId !== connId) {
-        users[userId].socket.emit('cursorPosition', position);
+        users[userId] && users[userId].socket && users[userId].socket.emit('cursorPosition', {id: connId, ...users[connId].meta , ...JSON.parse(position)});
       }
     });
   })
 
   socket.on('image', (url) => {
     console.log(`${connId} : image : ${url}`)
-    users[connId].meta.url = url;
-    let _users = Object.keys(users).filter(user => user !== connId).map(user => users[user].meta)
-    console.log(_users)
-
-    Object.keys(users).forEach((userId) => {
-      if (users[userId].id !== connId) {
-        // users[userId].socket.emit('test', users)
-        users[userId].socket.emit('users', _users);
-      }
-    });
+    users[connId].meta.url = url + '&key=' + connId;
+    broadcastUsers()
   })
 
   socket.on('disconnect', () => {
     console.log(connId + ' disconnected');
     delete users[connId];
-    Object.keys(users).forEach((userId) => {
-      if (users[userId].id !== connId) {
-        users[userId].socket.emit('users', Object.keys(users).filter(user => user !== connId).map(user => users[user].meta));
-      }
-    });
+    broadcastUsers()
   });
 });
 
